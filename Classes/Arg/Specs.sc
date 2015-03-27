@@ -84,6 +84,8 @@ ArrayControlSpec : ControlSpec {
 	asControlSpec { ^ControlSpec.newFrom( this ).default_( this.default.asCollection[0] ); }
 	asArrayControlSpec { ^this }
 	
+	uconstrain { |value| ^value.collect{ |x| this.constrain(x) } }
+
 	*testObject { |obj| ^obj.isArray && { obj.every(_.isNumber) } }
 }
 
@@ -163,6 +165,8 @@ TriggerSpec : Spec {
 	constrain { |value|
 		^value;
 	}
+	
+	asControlSpec { ^spec ? ControlSpec(0,1,\lin,1,0) }
 }
 
 BoolSpec : Spec {
@@ -191,7 +195,11 @@ BoolSpec : Spec {
 	}
 	
 	constrain { |value|
-		^value.booleanValue;
+		if( value.size == 0 ) { 
+			^value.booleanValue;
+		} {
+			^value.mean.booleanValue;
+		};
 	}
 	
 	default_ { |value| 
@@ -1067,6 +1075,8 @@ AngleSpec : ControlSpec {
 			).init
 	}
 }
+
+AngleArraySpec : ArrayControlSpec { }
 
 DisplaySpec : Spec { // a spec for displaying a value that should not be user-edited
 	var <>spec;

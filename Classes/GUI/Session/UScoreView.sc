@@ -35,7 +35,7 @@ UScoreView {
      var <currentScoreEditorController, <scoreController, <eventControllers = #[];
      var <tempoMapControllers;
      
-     var <updateTask, calledUpdate = false, <>updateInterval = 0.1;
+     var <updateTask, calledUpdate = false, <>updateInterval = 0.2;
      var <showTempoMap = false;
      
      var <followPos = false;
@@ -109,7 +109,7 @@ UScoreView {
 	    eventControllers.do(_.remove);
 	    eventControllers = this.currentScore.collect{ |e|
             var s = SimpleController(e);
-            [\startTime,\lockStartTime,\dur,\fadeIn,\fadeOut,\name,\track,\displayColor,\start,\end].do{ |key|
+            [\startTime,\lockStartTime,\dur,\fadeIn,\fadeOut,\fadeInCurve,\fadeOutCurve,\name,\track,\displayColor,\start,\end,\autoPause].do{ |key|
                 s.put(key,{ { 
 	                if( this.currentScore.updatePos ) {
 		                this.currentScore.changed( \something );
@@ -451,6 +451,7 @@ UScoreView {
             });
 
 		scoreView.maxZoom = [64,8];
+		scoreView.zoomCurve = 8;
 
 		usessionMouseEventsManager = UScoreEditorGuiMouseEventsManager(this);
 
@@ -486,15 +487,7 @@ UScoreView {
 					8, { this.deleteSelected }, // backspace QT
 					127, { this.deleteSelected }, // backspace Cocoa
 					32, { // space bar
-						case { score.isStopped } {
-							score.prepareAndStart( ULib.servers, score.pos, true, score.loop);
-						} { score.isPaused } {
-							score.resume( ULib.servers );
-						} { score.isPrepared } {
-							score.start( ULib.servers, score.pos, true);
-						} {
-							score.stop;
-						};
+						score.togglePlayback( ULib.servers );
 					},
 					100, { // d
 						this.duplicateSelected;
@@ -643,7 +636,9 @@ UScoreView {
 				Pen.color = Color.grey(0.5,1);
 				Pen.strokeRect( rect.insetBy(0.5,0.5) );
 
-		})
+		});
+		
+		scoreView.userView.view.focus;
      }
 
      refresh{ scoreView.refresh; }

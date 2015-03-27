@@ -12,10 +12,10 @@ mode: value (0-5) for type of operation
 	3: 'xor'; xor operation (or and nand)
 	4: 'a'; return first value
 	5: 'b'; return second value
-upValue: the value (or UMap) to output when the value changes upwards
-downValue: the value (or UMap) to output when the value changes downwards
+trueValue: the value (or UMap) to output when the result is true
+falseValue: the value (or UMap) to output when the result is false
 
-upValue and downValue arg ranges are mapped to that of the parameter to which the UMap is connected.
+trueValue and falseValue arg ranges are mapped to that of the parameter to which the UMap is connected.
 
 --
 this is an UMapDef definition file
@@ -41,4 +41,4 @@ UMapDef( \logical, { |a = 0, b = 0, mode = 0, trueValue = 1.0, falseValue = 0.0|
 .setSpec( \b, BoolSpec(false) )
 .setSpec( \mode, ListSpec( [0,1,2,3,4,5], 0, ['and', 'or', 'nand', 'xor', 'a', 'b' ] ) )
 .mappedArgs_([ \trueValue, \falseValue ])
-.category_( 'switch' )
+.category_( 'trigger_test' )

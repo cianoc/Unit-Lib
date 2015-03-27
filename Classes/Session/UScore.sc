@@ -77,6 +77,19 @@ UScore : UEvent {
 	    };
 	}
 	
+	*openMultiple { |paths, action| // action fired for each path
+		if( paths.isNil ) {
+		    Dialog.getPaths( { |paths|
+			    paths.do({ |path| action.value( openFunc.(path) ); });
+		    });
+	    } {
+		    paths.do({ |path|
+			    path = path.standardizePath;
+			    action.value( openFunc.(path) );
+			});
+	    };
+	}
+	
 	/*
 	* Syntaxes for UScore creation:
 	* UScore( <UEvent 1>, <UEvent 2>,...)
@@ -137,6 +150,7 @@ UScore : UEvent {
 	    .name_( name )
 	    .startTime_( startTime )
 	    .track_( track )
+	    .tempoMap_( tempoMap.duplicate )
 	    .displayColor_( displayColor ); 
 	}
 
@@ -392,7 +406,7 @@ UScore : UEvent {
 			if( (item.releaseSelf != true) && { item.duration < inf } ) {
 				endTime = item.eventEndTime;
 				if( (endTime >= startPos) && { endTime != item.startTime } ) {
-					releaseEvents.add( [endTime, 2, item] );
+					releaseEvents.add( [endTime + Server.default.latency, 2, item] );
 				};
 			};
 		});
@@ -417,7 +431,11 @@ UScore : UEvent {
             if(a[0] != b[0]) {
                 a[0] <= b[0]
             } {
-                a[1] <= b[1]
+	            if( a[1] != b[1] ) {
+		            a[1] <= b[1]
+	            } {
+		            a[2].isKindOf( UMarker )
+	            };
             }
         };
         doPrepare = prepareEvents.size > 0
@@ -644,7 +662,7 @@ UScore : UEvent {
 	    if(playState == \playing){
 		    this.stopScore;
 		    events.select(_.isFolder).do(_.pause);
-		    pos = this.pos + 1.0e-12;
+		    pos = this.pos;
 		    pausedAt = pos;
 		    startedAt = nil;
 		    this.playState_(\paused);
@@ -666,6 +684,18 @@ UScore : UEvent {
 		    events.select(_.isFolder).do( _.prSubScoreResume(targets) );
 		    pausedAt = nil;
 		}
+	}
+	
+	togglePlayback { |targets|
+		case { this.isStopped } {
+			this.prepareAndStart( targets, this.pos, true, this.loop);
+		} { this.isPaused } {
+			this.resume( targets );
+		} { this.isPrepared } {
+			this.start( targets, this.pos, true);
+		} {
+			this.stop;
+		};
 	}
 	
 	dispose { events.do(_.dispose) }

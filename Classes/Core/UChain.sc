@@ -40,6 +40,7 @@ UChain : UEvent {
 	var <muted = false;
 	
 	var <>addAction = \addToHead;
+	var <>global = false;
 	var <>ugroup;
 	var <>handlingUndo = false;
 	
@@ -136,6 +137,8 @@ UChain : UEvent {
 		if( tempDur.notNil ) { this.duration = tempDur };
 		
 		prepareTasks = [];
+		
+		units.reverse.do(_.uchainInit( this ));
 		
 		this.changed( \init );
 	}
@@ -244,6 +247,29 @@ UChain : UEvent {
 
 	fadeTimes { ^[this.fadeIn, this.fadeOut] }
 	
+	fadeInCurve_{ |curve = 0|
+		this.prSetCanFreeSynths(\u_fadeInCurve, curve);
+    this.changed( \fadeInCurve );
+	}
+
+	fadeOutCurve_{ |curve = 0|
+		this.prSetCanFreeSynths(\u_fadeOutCurve, curve);
+    this.changed( \fadeOutCurve );
+	}
+
+	fadeCurve_{ |curve = 0|
+		this.fadeInCurve_(curve);
+		this.fadeOutCurve_(curve.neg);
+	}
+
+	fadeInCurve {
+		^this.prGetCanFreeSynths.collect({ |item| item.get( \u_fadeInCurve ) }).maxItem ? 0;
+	}
+
+	fadeOutCurve {
+		^this.prGetCanFreeSynths.collect({ |item| item.get( \u_fadeOutCurve ) }).maxItem ? 0;
+	}
+
 	useSndFileDur { // look for SndFiles in all units, use the longest duration found
 		var durs;
 		units.do({ |unit|
@@ -546,13 +572,16 @@ UChain : UEvent {
 	makeGroupAndSynth { |target, startPos = 0|
 		var maxDurUnit;
 	    var group;
+	    var started = false;
 	    if( this.shouldPlayOn( target ) != false ) {
 	    		group = Group( target, addAction )
-	                .startAction_({ |synth|
+	                .startAction_({ |group|
 	                    // only add if started (in case this is a bundle)
 	                    this.changed( \go, group );
+	                    started = true;
 	                })
-	                .freeAction_({ |synth|
+	                .freeAction_({ |group|
+		                if( started == false ) { group.changed( \n_go ) };
 	                    this.removeGroup( group );
 	                    UGroup.end( this );
 	                    this.changed( \end, group );
@@ -666,7 +695,7 @@ UChain : UEvent {
 		
 		nowPreparingChain = this;
 		
-		lastTarget = target;
+		// lastTarget = target;
 		action = MultiActionFunc( action );
 		target = target.asCollection;
 		if( target.size == 0 ) {
@@ -681,6 +710,16 @@ UChain : UEvent {
 					true;
 				};
 			});
+		};
+		
+		if( global ) {
+			target = target.collect({ |trg|
+				if( trg.isKindOf( LoadBalancer ) ) {
+					trg.servers;
+				} {
+					trg;
+				};
+			}).flat;
 		};
 		
 		target = target.select({ |tg|
@@ -714,6 +753,10 @@ UChain : UEvent {
 			target = this.prepare( target, startPos, { cond.test = true; cond.signal } );
 			cond.wait;
 	       	this.start(target, startPos);
+			if( releaseSelf.not ) {
+				(this.duration + Server.default.latency).wait;
+				this.release;
+			};
 	       	prepareTasks.remove(task);
 		};
 	    prepareTasks = prepareTasks.add( task );
@@ -858,6 +901,14 @@ UChain : UEvent {
 		^units.select({ |u| u.keys.includes( key ) }).collect(_.get(key));
 	}
 	
+	setAt { |index, key, value|
+		this.units.at(index).set(key, value)
+	}
+
+	getAt{ |index, key|
+		^this.units.at(index).get(key)
+	}
+
 	add { |unit|
 		units = units.add( unit.asUnit );
 		this.changed( \units );
@@ -955,6 +1006,9 @@ UChain : UEvent {
 		};
 		if( addAction != \addToHead ) {
 			stream << ".addAction_(" <<< addAction << ")";
+		};
+		if( global != false ) {
+			stream << ".global_(" <<< global << ")";
 		};
 	}
 

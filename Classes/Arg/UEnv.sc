@@ -47,7 +47,9 @@ UEnv : UIn {
 			\gain -> ControlSpec( -inf, 24, \db ),
 			\mute -> BoolSpec( false ),
 			\fadeIn -> ControlSpec( 0, inf ),
-			\fadeOut -> ControlSpec( 0, inf )
+			\fadeOut -> ControlSpec( 0, inf ),
+			\fadeInCurve -> ControlSpec(-20, 20),
+			\fadeOutCurve -> ControlSpec(-20, 20);
 		]);
 	}
 	
@@ -56,8 +58,11 @@ UEnv : UIn {
 		var gate = this.getControl( \kr, name, 'gate', 1 );
 		var mute = this.getControl( \kr, name, 'mute', 0 );
 		var dur = this.getControl( \kr, name, 'dur', inf );
-		var doneAction = this.getControl( \kr, name, 'doneAction', 0 );
-		
+		var doneAction = this.getControl( \kr, name, 'doneAction', 0, argMode: \init );
+
+		var fadeInCurve = this.getControl( \kr, name, 'fadeInCurve', 0 );
+		var fadeOutCurve = this.getControl( \kr, name, 'fadeOutCurve', 0 );
+
 		gain = this.getControl( \kr, name, 'gain', gain, 0.5 ); // 0.5s lag time
 		if( ignoreFadeIn != true ) {
 			fadeIn = this.getControl( \kr, name, 'fadeIn', fadeIn );
@@ -67,8 +72,13 @@ UEnv : UIn {
 		^DemandEnvGen.kr( 
 				Dseq( [ 0, 1, 1, 0, 0 ], 1 ), 
 				Dseq( [ fadeIn, dur - (fadeIn+fadeOut), fadeOut, extraSilence ], 1 ),
+				Dseq( [ 
+					if( fadeInCurve.abs > 0.001, 5, 1 ), 1, 
+					if( fadeOutCurve.abs > 0.001, 5, 1 ),1 ], 
+				1 ),
+				Dseq( [ fadeInCurve, 0, fadeOutCurve, 0 ], 1 ),
 				doneAction: doneAction ) *
-			Env([ 1, 0, 0 ],[ fadeOut, extraSilence ], \lin, 0 )
+			Env([ 1, 0, 0 ],[ fadeOut, extraSilence ], fadeOutCurve, 0 )
 				.kr( doneAction, RunningMin.kr( gate ) + Impulse.kr(0) ) *
 			UGlobalGain.kr( useGlobalGain ) * gain.dbamp * (1-mute);
 	}

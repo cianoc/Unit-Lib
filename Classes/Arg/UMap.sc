@@ -3,6 +3,9 @@ UMapDef : Udef {
 	classvar <>defaultCanUseUMapFunc;
 	
 	var <>mappedArgs;
+	var <>outputIsMapped = true;
+	var >canInsert;
+	var >insertArgName;
 	var <>allowedModes = #[ sync, normal ];
 	var <>canUseUMapFunc;
 	var <>apxCPU = 0;
@@ -144,6 +147,27 @@ UMapDef : Udef {
 	unitCanUseUMap { |unit, key|
 		^(canUseUMapFunc ? defaultCanUseUMapFunc).value( unit, key, this );
 	}
+	
+	canInsert {
+		^(canInsert != false) && { this.insertArgName.notNil; };
+	}
+	
+	insertArgName {
+		if( insertArgName.isNil ) {
+			if( outputIsMapped ) {
+				insertArgName = mappedArgs.asCollection.detect({ |item|
+					this.getDefault( item ).asControlInput.asCollection.size == this.numChannels
+				});
+			} {
+				insertArgName = argSpecs.select({ |item|
+					item.private.not && { mappedArgs.asCollection.includes( item.name ).not }
+				}).detect({ |item| 
+					item.default.asControlInput.asCollection.size == this.numChannels;
+				}) !? _.name;
+			};
+		};
+		^insertArgName;
+	}
 }
 
 UMap : U {
@@ -161,12 +185,19 @@ UMap : U {
 	
 	classvar <>allUnits;
 	classvar <>currentBus = 0, <>maxBus = 499;
+	classvar >guiColor;
+	classvar <>allStreams;
+	classvar <>currentStreamID = 0;
 	
 	var <spec;
 	var <>unitArgName;
 	var <>unmappedKeys;
+	var <>streamID;
 	
 	*busOffset { ^1500 }
+	
+	*guiColor { ^guiColor ?? { guiColor = Color.blue.blend( Color.white, 0.8 ).alpha_(0.4) }; }
+	guiColor { ^this.class.guiColor }
 	
 	init { |in, inArgs, inMod|
 		super.init( in, inArgs ? [], inMod );
@@ -185,6 +216,7 @@ UMap : U {
 	
 	*initClass { 
 	    allUnits = IdentityDictionary();
+	    allStreams = Order();
 	}
 	
 	*defClass { ^UMapDef }
@@ -349,9 +381,47 @@ UMap : U {
 			.flatten(1);
 	}
 	
+	/// UPat
+	
+	stream {
+		^allStreams[ streamID ? -1 ];
+	}
+	
+	stream_ { |stream|
+		this.makeStreamID;
+		allStreams[ streamID ] = stream;
+	}
+	
+	*nextStreamID {
+		^currentStreamID = currentStreamID + 1;
+	}
+	
+	makeStreamID { |replaceCurrent = false|
+		if( replaceCurrent or: { streamID.isNil }) {
+			streamID = this.class.nextStreamID;
+		};
+	}
+	
+	makeStream {
+		this.def.makeStream( this );
+	}
+
+	resetStream {
+		this.stream.reset;
+	}
+
+	next { ^this.asControlInput }
+	
 	disposeFor {
-		if( this.unit.notNil && { this.unit.synths.size == 0 }) {
+		if( this.unit.notNil && { this.unit.synths.select(_.isKindOf( Synth ) ).size == 0 }) {
 			this.unit = nil;
+		};
+		if( this.def.isKindOf( FuncUMapDef ) ) {
+			this.values.do{ |val|
+	       	 if(val.respondsTo(\disposeFor)) {
+		            val.disposeFor( *args );
+		        }
+		    };
 		};
 	}
 	

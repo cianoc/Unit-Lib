@@ -124,13 +124,20 @@ UMapDefListView {
 		};
 
 		g = { |cat, udefs|
+            if( cat !== \private ) {
+            
             views[ cat ] = ExpandView( views[ \scrollview ],
                 (bounds.width - (scrollerMargin+6))@( (udefs.size + 1) * 22 ),
                 (bounds.width - (scrollerMargin+6))@18,
                 collapsed[ cat ] ? true
             );
             
-            views[ cat ].background = UMapGUI.color;
+            views[ cat ].background = UMap.guiColor;
+            
+            // temporary hack to make point and trigger sub-categories stick out
+            if( cat.asString.find("point").notNil or: { cat.asString.find("trigger").notNil } ) {
+	            views[ cat ].background = UMap.guiColor.blend( Color.gray(0.5,0.75), 0.33 );
+            };
             
             views[ cat ].button.background = nil;
 
@@ -182,6 +189,7 @@ UMapDefListView {
             	.collapseAction_({ collapsed[ cat ] = true })
             	.hideOutside;
             
+            };
         };
 
 		RoundView.useWithSkin( UChainGUI.skin ++ (RoundView.skin ? ()), {
@@ -217,12 +225,32 @@ UMapDefListView {
 				.radius_(2)
 				.canFocus_(false)
 				.action_({ |bt|
+					var defs;
 					UMapDef.loadOnInit = false;
-					UMapDef.loadAllFromDefaultDirectory.collect(_.synthDef).flat.select(_.notNil)
-						.do({ |def|
-							ULib.servers.do({ |srv| def.send( srv ) });
-					});
+					defs = UMapDef.loadAllFromDefaultDirectory
+						.collect(_.synthDef).flat.select(_.notNil);
 					UMapDef.loadOnInit = true;
+					ULib.servers.do({ |srv| 
+						if( srv.class == LoadBalancer ) {
+							if( srv.servers[0].isLocal ) {
+								defs.do(_.justWriteDefFile); 
+								srv.servers.do({ |sx|
+									sx.loadDirectory( SynthDef.synthDefDir );
+								});
+							} {
+								srv.servers.do{ |s|
+									defs.do(_.send(s))
+								};
+							};
+						} {
+							if( srv.isLocal ) { 
+								defs.do(_.justWriteDefFile); 
+								srv.loadDirectory( SynthDef.synthDefDir ); 
+							} {
+								defs.do(_.send(srv)); 
+							};
+						};
+					});
 				});
 				
 			StaticText(views[ \scrollview],100@25).string_("UMapDefs");

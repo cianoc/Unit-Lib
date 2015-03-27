@@ -95,6 +95,8 @@ Udef : GenericDef {
 	var <>ioNames;
 	var <>canUseUMap = true;
 	var <>showOnCollapse = #[ value ];
+	var <>prepareArgsFunc;
+	var <>uchainInitFunc;
 	
 	*initClass{
 		defsFolders = [ 
@@ -121,6 +123,16 @@ Udef : GenericDef {
 		this.buildArgSpecs !? {
 			this.buildArgSpecs = this.buildArgSpecs ++ [argSpec];
 		}
+	}
+
+	//Udef.find("pass")
+	*find { |string|
+		string = string.asString;
+		^Udef.all.select{ |x| x.name.asString.find(string, true).notNil }.asArray
+	}
+
+	*open { |symbol|
+		Udef.all.at(symbol).openDefFile
 	}
 
     prGenerateSynthDefName {
@@ -160,7 +172,7 @@ Udef : GenericDef {
 	}
 	
 	asArgsArray { |argPairs, unit, constrain = true|
-		argPairs = argPairs ? #[];
+		argPairs = prepareArgsFunc.value( argPairs ) ? argPairs ? #[];
 		^argSpecs.collect({ |item| 
 			var val;
 			val = argPairs.pairsAt(item.name) ?? { item.default.copy };
@@ -244,6 +256,7 @@ Udef : GenericDef {
 	
 	makeSynth { |unit, target, startPos = 0, synthAction|
 	    var synth;
+	    var started = false;
 	    if( unit.shouldPlayOn( target ) != false ) {
 		    /* // maybe we don't need this, or only at verbose level
 		    if( unit.preparedServers.includes( target.asTarget.server ).not ) {
@@ -255,8 +268,10 @@ Udef : GenericDef {
 			synth = this.createSynth( unit, target, startPos );
 			synth.startAction_({ |synth|
 				unit.changed( \go, synth );
+				started = true;
 			});
 			synth.freeAction_({ |synth|
+				if( started == false ) { synth.changed( \n_go ) };
 				unit.removeSynth( synth );
 				synth.server.loadBalancerAddLoad( this.apxCPU.neg );
 				unit.changed( \end, synth );
@@ -350,13 +365,14 @@ Udef : GenericDef {
 		^Synth( this.synthDefName, unit.getArgsFor( target, startPos ), target, \addToTail );
 	}
 	
-	setSpec { |name, spec, mode, constrainDefault = true|
+	setSpec { |name, spec, mode, constrainDefault = true, private|
 		var asp;
 		asp = this.getArgSpec(name);
 		if( asp.notNil ) { 
-			asp.spec = spec.asSpec;
+			if( spec.notNil ) { asp.spec = spec.asSpec; };
 			if( mode.notNil ) { asp.mode = mode; };
 			if( constrainDefault ) { asp.constrainDefault };
+			if( private.notNil ) { asp.private = private };
 		};
 	}
 	
@@ -520,6 +536,10 @@ U : ObjectWithArgs {
 	allKeys { ^this.keys }
 	allValues { ^this.values }
 	
+	uchainInit { |chain|
+		this.def !? { |d| d.uchainInitFunc.value( this, chain ) };
+	}
+	
 	guiCollapsed_ { |bool = false|
 		if( guiCollapsed != bool ) {
 			guiCollapsed = bool;
@@ -582,6 +602,46 @@ U : ObjectWithArgs {
 	
 	prSet { |...args| // without changing the arg
 		this.def.setSynth( this, *args );
+	}
+	
+	setConstrain { |...args|
+		this.set( 
+			*args.clump(2).collect({ |item|
+				var key, value;
+				#key, value = item;
+				if( value.isUMap.not ) {
+					[ key, this.getSpec( key ).uconstrain( value ) ]
+				} {
+					item;
+				};
+			}).flatten(1)
+		);
+	}
+	
+	insertUMap { |key, umapdef, args|
+		var item;
+		umapdef = umapdef.asUdef( UMapDef );
+		if( umapdef.notNil ) {
+			if( umapdef.canInsert ) {
+				item = this.get( key );
+				this.set( key, UMap( umapdef,  args ) );
+				this.get( key ).setConstrain( umapdef.insertArgName, item );
+			} {
+				this.set( key, UMap( umapdef, args ) );
+			};
+		};
+	}
+	
+	removeUMap { |key|
+		var umap;
+		umap = this.get( key );
+		if( umap.isKindOf( UMap ) ) {
+			if( umap.def.canInsert ) {
+				this.set( key, umap.get( umap.def.insertArgName ) );
+			} {
+				this.set( key, this.getDefault( key ) );
+			};
+		};
 	}
 	
 	get { |key|
@@ -1133,10 +1193,18 @@ U : ObjectWithArgs {
 }
 
 + Array {
-	asUnit { ^U( this[0], *this[1..] ) }
+	asUnit {
+		^if( this[0].isKindOf(SimpleNumber) ) {
+			UX(this[0], this[1], *this[2..])
+		}{
+			U( this[0], *this[1..] )
+		}
+	}
 	asUnitArg { |unit, key|
 		var umapdef, umap;
-		if( this[0].isMemberOf( Symbol ) && { this[1].isArray } ) { 
+		if( ( this[0].isMemberOf( Symbol ) or: this[0].isKindOf( UMapDef ) ) && { 
+			this[1].isArray 
+		} ) { 
 			umapdef = this[0].asUdef( UMapDef );
 			if( umapdef.notNil && { unit.canUseUMap( key, umapdef ) } ) {
 				^UMap( *this ).asUnitArg( unit, key );

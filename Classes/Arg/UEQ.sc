@@ -67,12 +67,13 @@ UEQ : EQSetting {
 
 	asUEQ { ^this }
 	
-	*ar { |in, key, def|
-		^this.new( def ).ar( in, key );
+	*ar { |in, key, def, setting|
+		^this.new( def, setting ).ar( in, key );
 	}
 	
 	 ar { |in, key|
 		key = (key ? \eq).asSymbol;
+		Udef.addBuildSpec( ArgSpec( key, setting, UEQSpec( def, this ) ) );
 	 	^super.ar( in, key.kr( setting.flat ) )
 	 }
 }

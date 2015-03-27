@@ -191,6 +191,7 @@
 							vws[ \val ] = vw.value;
 							vws[ \range ] = [ vws[ \val ].minItem, vws[ \val ].maxItem ];
 							vws[ \setRangeSlider ].value;
+							vws[ \setMeanSlider ].value;
 							action.value( vws, vws[ \val ] );
 						});
 						
@@ -302,6 +303,7 @@
 				};
 				vws[ \val ] = this.map( values );
 				vws[ \setPlotter ].value;
+				vws[ \setMeanSlider ].value;
 				action.value( vws, vws[ \val ] ); 
 			}
 		);
@@ -314,6 +316,45 @@
 		};
 		
 		vws[ \setRangeSlider ].value;
+		
+		vws[ \meanSlider ] = SmoothSlider( 
+			vws[ \rangeSlider ].rangeSlider.parent, 
+			vws[ \rangeSlider ].rangeSlider.bounds.insetAll(0,0,0,
+				vws[ \rangeSlider ].rangeSlider.bounds.height * 0.6 )
+		)
+			.hiliteColor_( nil )
+			.background_( Color.white.alpha_(0.125) )
+			.knobSize_(0.6)
+			.mode_( \move )
+			.action_({ |sl|
+				var values, min, max, mean;
+				values = this.unmap( vws[ \val ] );
+				min = values.minItem;
+				max = values.maxItem;
+				mean = [ min, max ].mean;
+				values = values.normalize( *(([ min, max ] - mean) + sl.value).clip(0,1) );
+				vws[ \val ] = this.map( values );
+				vws[ \setPlotter ].value;
+				vws[ \setRangeSlider ].value;
+				action.value( vws, vws[ \val ] );
+			});
+		
+		vws[ \meanSlider ].mouseDownAction = { |sl, x,y,mod, xx, clickCount|
+			if( clickCount == 2 ) {
+				vws[ \val ] = this.map( sl.value ) ! vws[ \val ].size;
+				vws[ \setRangeSlider ].value;
+				vws[ \setPlotter ].value;
+			};
+		};
+		
+		vws[ \setMeanSlider ] = {
+			var min, max;
+			min = vws[ \val ].minItem;
+			max = vws[ \val ].maxItem;
+			vws[ \meanSlider ].value_( this.unmap( [ min, max ] ).mean );
+		};
+		
+		vws[ \setMeanSlider ].value;
 		
 		if( GUI.id === \qt ) { optionsWidth = 80; operationsOffset = 0; };
 		
@@ -352,10 +393,12 @@
 		
 		vws[ \update ] = {
 			vws[ \setRangeSlider ].value;
+			vws[ \setMeanSlider ].value;
 			vws[ \setPlotter ].value;
 		};
 		
 		vws[ \rangeSlider ].view.resize_(2);
+		vws[ \meanSlider ].resize_(2);
 		vws[ \options ].resize_(3);
 			
 		view.view.onClose_({
@@ -506,7 +549,11 @@
 		vws[ \buttonView ]
 				.radius_( bounds.height / 8 )
 				.mouseDownAction_({
-					action.value( vws, vws[ \val ] );
+					if( spec.notNil ) {
+						action.value( vws, vws[ \val ] );
+					} {
+						action.value( vws, 1 );
+					}
 				})
 				.resize_( 1 );
 				
@@ -864,7 +911,7 @@
 			labelWidth = 0;
 		};
 		
-		vws[ \objectLabel ] = StaticText( view,Ê
+		vws[ \objectLabel ] = StaticText( view,
 			(bounds.width-(labelWidth + 2) - 42) @ (bounds.height) 
 		).applySkin( RoundView.skin ).background_( Color.gray(0.8) );
 			
@@ -991,7 +1038,7 @@
 				var editor;
 				if( vws[ \editor ].isNil or: { vws[ \editor ].isClosed } ) {
 					RoundView.pushSkin( skin );
-					editor = EnvView( "Envelope editor", env: vws[ \val ], spec: spec )
+					editor = EnvView( "Envelope editor - "++label, env: vws[ \val ], spec: spec )
 						.onClose_({ 
 							if( vws[ \editor ] == editor ) {
 								vws[ \editor ] = nil;
@@ -1972,6 +2019,50 @@
 			view[ \mode ].value = view[ \mode ].items.indexOf( mode ) ? 0; 
 		}.defer;
 		if( active ) { view[ \rad ].doAction };
+	}
+	
+	mapSetView { |view, value, active = false|
+		this.setView( view, this.map( value ), active );
+	}
+
+}
+
++ AngleArraySpec {
+	
+	makeView { |parent, bounds, label, action, resize|
+		var mode, vws, act, spec, degMul;
+		mode = AngleSpec.mode;
+		switch( mode, 
+			\rad, { 
+				act = { |vws, value|
+					action.value( vws, value * pi ) 
+				};
+				spec = ArrayControlSpec( minval / pi, maxval / pi, \linear, step, default / pi );
+				vws = spec.makeView( parent, bounds, label, act, resize );
+				vws[ \mode ] = \rad;
+				vws[ \spec ] = spec;
+			},
+			\deg, { 
+				degMul = 180 / pi;
+				act = { |vws, value|
+					action.value( vws, value / degMul );
+				};
+				spec = ArrayControlSpec( minval * degMul, maxval * degMul, \linear, step, 
+					default * degMul );
+				vws = spec.makeView( parent, bounds, label, act, resize );
+				vws[ \mode ] = \deg;
+				vws[ \spec ] = spec;
+			}
+		);
+		^vws;
+	}
+	
+	setView { |view, value, active = false|
+		switch( view[ \mode ],
+			\rad, { value = value / pi },
+			\deg, { value = value * 180 / pi }
+		);
+		view[ \spec ].setView( view, value, active )
 	}
 	
 	mapSetView { |view, value, active = false|

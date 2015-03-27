@@ -20,9 +20,10 @@
 UScoreEditor {
 
     classvar <clipboard;
+    classvar <>enableUndo = true;
 
 	var <score;
-	var <undoStates, <redoStates, maxUndoStates = 40;
+	var <undoStates,  maxUndoStates = 10, <undoPos = 0, <undoSize = 0, <redoSize = 0;
 
 	*new { |score|
 		^super.newCopyArgs( score)
@@ -30,8 +31,7 @@ UScoreEditor {
 	}
 
 	init {
-		undoStates = List.new;
-		redoStates = List.new;
+		undoStates = Array.newClear( maxUndoStates );
 	}
 
 	*initClass {
@@ -73,38 +73,47 @@ UScoreEditor {
     }
 
 	//--UNDO/REDO--
+	clearUndo {
+		undoStates = Array.newClear( maxUndoStates );
+		undoPos = 0;
+		undoSize = 0;
+		redoSize = 0;
+		this.changed(\something);
+	}
+	
 	storeUndoState {
-
-		redoStates = List.new;
-		undoStates.add( score.events.collect( _.duplicate ) );
-		if(undoStates.size > maxUndoStates) {
-			undoStates.removeAt(0);
-		}
-
+		if( enableUndo ) {	
+			undoStates.wrapPut( undoPos, score.events.collect( _.copy ) );
+			undoPos = undoPos + 1;
+			undoSize = (undoSize + 1).min( maxUndoStates );
+			redoSize = 0;
+		};
 	}
 
 	undo {
-
-		if(undoStates.size > 0) {
-			redoStates.add(score.events);
-			score.events = undoStates.pop;
+		if( undoSize > 0 ) {
+			undoStates.wrapPut( undoPos, score.events );
+			undoPos = undoPos - 1;
+			score.events = undoStates.wrapAt( undoPos ) ?? { "empty".postln; [] };
+			undoSize = (undoSize - 1).max(0);
+			redoSize = (redoSize + 1).min(maxUndoStates);
+			score.changed(\numEventsChanged);
+			score.changed(\something);
+			this.changed(\undo);
 		};
-		score.changed(\numEventsChanged);
-		score.changed(\something);
-		this.changed(\undo);
-
 	}
 
 	redo {
-
-		if( redoStates.size > 0 ) {
-			undoStates.add(score.events);
-			score.events = redoStates.pop;
+		if( redoSize > 0 ) {
+			undoStates.wrapPut( undoPos, score.events );
+			undoPos = undoPos + 1;
+			score.events = undoStates.wrapAt( undoPos ) ?? { "empty".postln; [] };
+			undoSize = (undoSize + 1).min(maxUndoStates);
+			redoSize = (redoSize - 1).max(0);
+			score.changed(\numEventsChanged);
+			score.changed(\something);
+			this.changed(\redo);
 		};
-		score.changed(\numEventsChanged);
-		score.changed(\something);
-		this.changed(\redo);
-
 	}
 
 	//--EVENT MANAGEMENT--
@@ -237,58 +246,52 @@ UScoreEditor {
 	}
 	
 	moveEvents { |events, amount = 0| // use for small steps
-		if( events.size > 0 ) {	
-			this.changeScore({	
-				if( amount.isNegative ) {
-					amount = amount.max( events.collect(_.startTime ).minItem.neg );
-				};
-				if( amount != 0 ) {
-					this.changeScore({
-						events.do({ |ev|
-							ev.startTime = (ev.startTime + amount).max(0);
-						});
+		if( events.size > 0 ) {
+			if( amount.isNegative ) {
+				amount = amount.max( events.collect(_.startTime ).minItem.neg );
+			};
+			if( amount != 0 ) {
+				this.changeScore({
+					events.do({ |ev|
+						ev.startTime = (ev.startTime + amount).max(0);
 					});
-				};
-			});
+				});
+			};
 		};
 	}
 	
 	moveEventsBeats { |events, amount = 0|
-		if( events.size > 0 ) {	
-			this.changeScore({	
-				if( amount.isNegative ) {
-					amount = amount.max( 
-						score.tempoMap.beatAtTime( events.collect(_.startTime ).minItem ).neg 
-					);
-				};
-				if( amount != 0 ) {
-					this.changeScore({
-						events.do({ |ev|
-							ev.startTime = score.tempoMap.useBeat( ev.startTime, _ + amount )
-								.max(0);
-						});
+		if( events.size > 0 ) {
+			if( amount.isNegative ) {
+				amount = amount.max( 
+					score.tempoMap.beatAtTime( events.collect(_.startTime ).minItem ).neg 
+				);
+			};
+			if( amount != 0 ) {
+				this.changeScore({
+					events.do({ |ev|
+						ev.startTime = score.tempoMap.useBeat( ev.startTime, _ + amount )
+							.max(0);
 					});
-				};
-			});
+				});
+			};
 		};
 	}
 
 	changeEventsTrack { |events, amount = 0|
 		if( events.size > 0 ) {	
-			this.changeScore({		
-				var minStartTime;
-				amount = amount.round(1);
-				if( amount.isNegative ) { // don't allow negative tracks
-					amount = amount.abs.min( events.collect(_.track).minItem ).neg;
-				};
-				if( amount != 0 ) {
-					this.changeScore({
-						events.do({ |ev|
-							ev.track = ev.track + amount;
-						});
+			var minStartTime;
+			amount = amount.round(1);
+			if( amount.isNegative ) { // don't allow negative tracks
+				amount = amount.abs.min( events.collect(_.track).minItem ).neg;
+			};
+			if( amount != 0 ) {
+				this.changeScore({
+					events.do({ |ev|
+						ev.track = ev.track + amount;
 					});
-				};
-			});
+				});
+			};
 		};
 	}
 
